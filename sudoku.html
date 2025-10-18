@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Multiplayer Sudoku–Crossword Hybrid</title>
+<style>
+  body{background:#0f1724;color:#e6eef8;font-family:Segoe UI,Arial,sans-serif;margin:0;padding:0;display:flex;justify-content:center;align-items:flex-start;padding-top:20px}
+  .container{background:#111a2e;padding:20px;border-radius:12px;box-shadow:0 0 20px rgba(0,0,0,0.6);width:fit-content;text-align:center}
+  .board{display:grid;grid-template-columns:repeat(9,40px);gap:2px;margin-bottom:10px;border:3px solid  rgba(30, 144, 255, 0.2);padding:2px;border-radius:8px}
+  .cell{width:40px;height:40px;display:flex;justify-content:center;align-items:center;background:#1a2742;border-radius:4px;font-size:18px;border:1px solid #20385a;position:relative}
+  .cell input{width:100%;height:100%;background:transparent;border:none;color:#fff;text-align:center;font-size:18px}
+  .cell.given{background:#20385a;font-weight:bold;color:#90caf9}
+  .cell.wrong{background:#ff4c4c !important}
+  .player-info{display:flex;justify-content:space-between;margin-bottom:10px;font-weight:bold}
+  .active{color:#4fc3f7;}
+  .scores{display:flex;justify-content:space-between;margin-bottom:10px}
+  .controls {
+  display: flex;
+  flex-wrap: wrap;           /* allow multiple rows */
+  gap: 10px;                 /* space between buttons */
+  justify-content: center;   /* center buttons horizontally */
+  max-width: 300px;          /* adjust this until 3 fit in one line */
+  margin: 10px auto;
+}
+
+.controls button {
+  flex: 0 0 auto;            /* buttons keep natural width */
+  padding: 8px 15px;
+  border: none;
+  border-radius: 5px;
+  background: #007BFF;
+  color: white;
+  cursor: pointer;
+}
+
+.controls button:hover {
+  background: #0056b3;
+}
+
+  button{background:#4fc3f7;border:none;color:#00152e;padding:6px 10px;border-radius:8px;cursor:pointer;font-weight:bold}
+  .crossword{display:grid;grid-template-columns:repeat(5,40px);grid-auto-rows:40px;gap:2px;margin-top:15px}
+  .cw-cell{display:flex;align-items:center;justify-content:center;background:#20385a;color:#90caf9;font-weight:bold;border-radius:4px;font-size:18px}
+  .cw-black{background:#00152e}
+  .owner-p1{background:linear-gradient(180deg,rgba(30,144,255,0.2),rgba(30,144,255,0.1));color:#1e90ff}
+  .owner-p2{background:linear-gradient(180deg,rgba(229,57,53,0.2),rgba(229,57,53,0.1));color:#e53935}
+  select {
+    background:#4fc3f7;color:#00152e;border:none;padding:6px 10px;border-radius:8px;cursor:pointer;
+    font-weight:bold;font-size:16px;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg fill='%2300152e' height='16' width='16' xmlns='http://www.w3.org/2000/svg'><path d='M4 6l4 4 4-4z'/></svg>");
+    background-repeat:no-repeat;background-position:right 10px center;background-size:14px;padding-right:28px;transition:all 0.25s ease-in-out;
+  }
+  select:hover{background:#6fd4ff;transform:scale(1.05);}
+  select:active{transform:scale(0.97);}
+  .board{border-collapse:collapse;}
+  .cell{border:1px solid #20385a;}
+  .cell:nth-child(3n){border-right:3px solid #4fc3f7;}
+  .cell:nth-child(9n + 1){border-left:3px solid #4fc3f7;}
+  .cell:nth-child(n+19):nth-child(-n+27),
+  .cell:nth-child(n+46):nth-child(-n+54){border-bottom:3px solid #4fc3f7;}
+  .scores{display:none;}
+
+  /* ✨ Hint counter glow animation */
+  .hint-glow {
+    animation: glow 0.7s ease-in-out;
+  }
+  @keyframes glow {
+    0% { text-shadow: 0 0 8px #4fc3f7; transform: scale(1.08); }
+    100% { text-shadow: none; transform: scale(1); }
+  }
+
+  /* optional 'correct' highlight */
+  .correct { outline: 2px solid rgba(124, 252, 0, 0.12); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="player-info">
+    <div id="p1" class="active">PLAYER 1 <span id="p1Hints">(Hints: 0/3)</span></div>
+    <div id="p2">PLAYER 2 <span id="p2Hints">(Hints: 0/3)</span></div>
+  </div>
+
+  <div class="scores">
+    <div>Score P1: <span id="score1">0</span></div>
+    <div>Score P2: <span id="score2">0</span></div>
+  </div>
+
+  <div id="sboard" class="board"></div>
+  <div class="crossword" id="cross"></div>
+
+  <div class="controls">
+    <button id="hintBtn">Hint</button>
+    <button id="showSol">Show Solution</button>
+    <button id="resetBtn">Reset</button>
+
+    <select id="packSelect">
+      <option value="fruit">Fruit Pack</option>
+      <option value="animal">Animal Pack</option>
+    </select>
+
+    <select id="difficulty">
+      <option value="beginner">Beginner</option>
+      <option value="advanced">Advanced</option>
+    </select>
+  </div>
+
+  <div id="winnerPopup" style="
+    display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(0,0,0,0.8);justify-content:center;align-items:center;
+    color:#fff;font-size:28px;font-weight:bold;flex-direction:column;z-index:1000;">
+    <div id="winnerText"></div>
+    <button id="playAgainBtn" style="margin-top:20px;background:#4fc3f7;color:#00152e;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;">
+      Play Again
+    </button>
+  </div>
+</div>
+
+<script>
+/* ---------- State & constants ---------- */
+let gamePlayed = false;
+let GIVEN = [], cwLayout = [], mapping = [];
+let hintUsedP1 = 0, hintUsedP2 = 0;
+const MAX_HINTS = 3;
+
+const PUZZLES = {
+  fruit: {
+    GIVEN: [
+      [0,0,0,2,6,0,7,0,1],
+      [6,8,0,0,7,0,0,9,0],
+      [1,9,0,0,0,4,5,0,0],
+      [8,2,0,1,0,0,0,4,0],
+      [0,0,4,6,0,2,9,0,0],
+      [0,5,0,0,0,3,0,2,8],
+      [0,0,9,3,0,0,0,7,4],
+      [0,4,0,0,5,0,0,3,6],
+      [7,0,3,0,1,8,0,0,0]
+    ],
+    cwLayout: [
+      {r:0,c:0,ch:'A'},{r:0,c:1,ch:'P'},{r:0,c:2,ch:'P'},{r:0,c:3,ch:'L'},{r:0,c:4,ch:'E'},
+      {r:1,c:0,black:true},{r:1,c:1,black:true},{r:1,c:2,ch:'E'},{r:1,c:3,black:true},{r:1,c:4,black:true},
+      {r:2,c:0,ch:'T'},{r:2,c:1,ch:'E'},{r:2,c:2,ch:'A'},{r:2,c:3,black:true},{r:2,c:4,black:true},
+      {r:3,c:0,black:true},{r:3,c:1,black:true},{r:3,c:2,ch:'R'},{r:3,c:3,black:true},{r:3,c:4,black:true},
+      {r:4,c:0,black:true},{r:4,c:1,black:true},{r:4,c:2,black:true},{r:4,c:3,black:true},{r:4,c:4,black:true}
+    ],
+    mapping: [
+      {type:'row', idx:0, target:{r:0,c:0}},
+      {type:'row', idx:1, target:{r:0,c:1}},
+      {type:'row', idx:2, target:{r:0,c:2}},
+      {type:'row', idx:3, target:{r:0,c:3}},
+      {type:'row', idx:4, target:{r:0,c:4}},
+      {type:'row', idx:5, target:{r:1,c:2}},
+      {type:'row', idx:6, target:{r:2,c:2}},
+      {type:'row', idx:7, target:{r:3,c:2}},
+      {type:'row', idx:8, target:{r:2,c:0}},
+      {type:'col', idx:0, target:{r:2,c:1}}
+    ]
+  },
+  animal: {
+    GIVEN: [
+      [5,3,0,0,7,0,0,0,0],
+      [6,0,0,1,9,5,0,0,0],
+      [0,9,8,0,0,0,0,6,0],
+      [8,0,0,0,6,0,0,0,3],
+      [4,0,0,8,0,3,0,0,1],
+      [7,0,0,0,2,0,0,0,6],
+      [0,6,0,0,0,0,2,8,0],
+      [0,0,0,4,1,9,0,0,5],
+      [0,0,0,0,8,0,0,7,9]
+    ],
+    cwLayout: [
+      {r:0,c:0,ch:'T'},{r:0,c:1,ch:'I'},{r:0,c:2,ch:'G'},{r:0,c:3,ch:'E'},{r:0,c:4,ch:'R'},
+      {r:1,c:0,black:true},{r:1,c:1,black:true},{r:1,c:2,ch:'U'},{r:1,c:3,black:true},{r:1,c:4,black:true},
+      {r:2,c:0,ch:'O'},{r:2,c:1,ch:'W'},{r:2,c:2,ch:'L'},{r:2,c:3,black:true},{r:2,c:4,black:true},
+      {r:3,c:0,black:true},{r:3,c:1,black:true},{r:3,c:2,ch:'L'},{r:3,c:3,black:true},{r:3,c:4,black:true},
+      {r:4,c:0,black:true},{r:4,c:1,black:true},{r:4,c:2,black:true},{r:4,c:3,black:true},{r:4,c:4,black:true}
+    ],
+    mapping: [
+      {type:'row', idx:0, target:{r:0,c:0}},
+      {type:'row', idx:1, target:{r:0,c:1}},
+      {type:'row', idx:2, target:{r:0,c:2}},
+      {type:'row', idx:3, target:{r:0,c:3}},
+      {type:'row', idx:4, target:{r:0,c:4}},
+      {type:'row', idx:5, target:{r:1,c:2}},
+      {type:'row', idx:6, target:{r:2,c:2}},
+      {type:'row', idx:7, target:{r:3,c:2}},
+      {type:'row', idx:8, target:{r:2,c:0}},
+      {type:'col', idx:0, target:{r:2,c:1}}
+    ]
+  }
+};
+
+/* ---------- DOM refs ---------- */
+let sCells = [], cwCells = {}, claimed = {}, currentPlayer = 1;
+const sboard = document.getElementById('sboard');
+const cross = document.getElementById('cross');
+const score1 = document.getElementById('score1');
+const score2 = document.getElementById('score2');
+const p1 = document.getElementById('p1');
+const p2 = document.getElementById('p2');
+const hintBtn = document.getElementById('hintBtn');
+const showSolBtn = document.getElementById('showSol');
+const resetBtn = document.getElementById('resetBtn');
+const packSelect = document.getElementById('packSelect');
+const difficultySelect = document.getElementById('difficulty');
+const winnerPopup = document.getElementById('winnerPopup');
+const winnerText = document.getElementById('winnerText');
+const playAgainBtn = document.getElementById('playAgainBtn');
+
+/* ---------- Puzzle load / UI build ---------- */
+function loadPuzzle(name) {
+  const puzzle = PUZZLES[name];
+  const temp = puzzle.GIVEN.map(row => row.slice());
+  solveSudoku(temp);           // fills window.SOL with solution in temp
+  window.SOL = temp;
+
+  GIVEN = puzzle.GIVEN.map(row => row.slice()); // copy
+  cwLayout = puzzle.cwLayout;
+  mapping = puzzle.mapping;
+
+  // reset state
+  hintUsedP1 = 0; hintUsedP2 = 0;
+  currentPlayer = 1;
+  gamePlayed = false;
+
+  document.getElementById("p1Hints").textContent = `(Hints: 0/${MAX_HINTS})`;
+  document.getElementById("p2Hints").textContent = `(Hints: 0/${MAX_HINTS})`;
+  p1.classList.add('active'); p2.classList.remove('active');
+
+  makeSudoku();
+  makeCrossword();
+  updateScores();
+}
+
+function makeSudoku() {
+  sboard.innerHTML = '';
+  sCells = [];
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      const wrap = document.createElement('div');
+      wrap.className = 'cell';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.maxLength = 1;
+      inp.dataset.r = r;
+      inp.dataset.c = c;
+      if (GIVEN[r][c] !== 0) {
+        wrap.classList.add('given');
+        inp.value = GIVEN[r][c];
+        inp.disabled = true;
+      }
+      inp.addEventListener('input', onSudokuInput);
+      wrap.appendChild(inp);
+      sboard.appendChild(wrap);
+      sCells.push(inp);
+    }
+  }
+}
+
+function makeCrossword() {
+  cross.innerHTML = '';
+  cwCells = {};
+  claimed = {};
+  for (const cell of cwLayout) {
+    const el = document.createElement('div');
+    el.className = 'cw-cell';
+    if (cell.black) {
+      el.classList.add('cw-black');
+      el.textContent = '';
+    } else {
+      el.textContent = '_';
+      el.dataset.letter = cell.ch;
+      cwCells[cell.r + ',' + cell.c] = el;
+      claimed[cell.r + ',' + cell.c] = null;
+    }
+    cross.appendChild(el);
+  }
+}
+
+/* ---------- Hint handling ---------- */
+hintBtn.addEventListener('click', () => {
+  const empty = sCells.filter(inp => inp.value === '');
+  if (empty.length === 0) return;
+
+  let hintSpan;
+  if (currentPlayer === 1) {
+    if (hintUsedP1 >= MAX_HINTS) { alert("Player 1 has used all hints!"); return; }
+    hintUsedP1++;
+    hintSpan = document.getElementById("p1Hints");
+    hintSpan.textContent = `(Hints: ${hintUsedP1}/${MAX_HINTS})`;
+  } else {
+    if (hintUsedP2 >= MAX_HINTS) { alert("Player 2 has used all hints!"); return; }
+    hintUsedP2++;
+    hintSpan = document.getElementById("p2Hints");
+    hintSpan.textContent = `(Hints: ${hintUsedP2}/${MAX_HINTS})`;
+  }
+
+  // glow feedback
+  hintSpan.classList.add("hint-glow");
+  setTimeout(() => hintSpan.classList.remove("hint-glow"), 700);
+
+  // fill a random empty cell with the solution and trigger input handling
+  const choice = empty[Math.floor(Math.random() * empty.length)];
+  const r = +choice.dataset.r, c = +choice.dataset.c;
+  choice.value = window.SOL[r][c];
+  // trigger same behavior as user typing
+  onSudokuInput({ target: choice });
+});
+
+/* ---------- Input and turn logic ---------- */
+function onSudokuInput(e) {
+  const el = e.target;
+  const prevValue = el.dataset.prevValue || ''; // store old value before edit
+  el.value = el.value.replace(/[^1-9]/g, '').slice(0, 1);
+
+  // If the cell is now empty → means player erased → don't count or switch turn
+  if (el.value === '') {
+    el.dataset.prevValue = ''; // update stored value
+    return;
+  }
+
+  // If the value didn’t actually change (same number typed again), ignore
+  if (el.value === prevValue) return;
+
+  // ✅ Mark that a move has been played
+  gamePlayed = true;
+  el.dataset.prevValue = el.value; // remember latest value for future checks
+
+  // ✅ Visual validation and mapping
+  checkCompletion();
+  updateScores();
+
+  // ✅ Switch turn after valid number entry
+  switchTurn();
+}
+
+
+/* ---------- Completion and claiming logic ---------- */
+function checkCompletion() {
+  const difficulty = difficultySelect.value;
+  const showErrors = difficulty === 'beginner';
+
+  // Clear old classes
+  sCells.forEach(inp => inp.parentElement.classList.remove('wrong', 'correct'));
+
+  // Check rows
+  for (let r = 0; r < 9; r++) {
+    const vals = sCells.slice(r * 9, r * 9 + 9).map(inp => +inp.value || 0);
+    if (vals.every(v => v !== 0)) {
+      const isCorrect = vals.every((v, c) => v === window.SOL[r][c]);
+      for (let c = 0; c < 9; c++) {
+        const cell = sCells[r * 9 + c].parentElement;
+        if (isCorrect) cell.classList.add('correct');
+        else if (showErrors) cell.classList.add('wrong');
+      }
+      if (isCorrect) checkMappingsAndClaim(currentPlayer);
+    }
+  }
+
+  // Check columns
+  for (let c = 0; c < 9; c++) {
+    const vals = [];
+    for (let r = 0; r < 9; r++) vals.push(+sCells[r * 9 + c].value || 0);
+    if (vals.every(v => v !== 0)) {
+      const isCorrect = vals.every((v, r) => v === window.SOL[r][c]);
+      for (let r = 0; r < 9; r++) {
+        const cell = sCells[r * 9 + c].parentElement;
+        if (isCorrect) cell.classList.add('correct');
+        else if (showErrors) cell.classList.add('wrong');
+      }
+      if (isCorrect) checkMappingsAndClaim(currentPlayer);
+    }
+  }
+
+  // Check 3x3 boxes
+  for (let br = 0; br < 3; br++) {
+    for (let bc = 0; bc < 3; bc++) {
+      const cells = [], vals = [];
+      for (let r = br * 3; r < br * 3 + 3; r++) {
+        for (let c = bc * 3; c < bc * 3 + 3; c++) {
+          const idx = r * 9 + c;
+          cells.push(sCells[idx]);
+          vals.push(+sCells[idx].value || 0);
+        }
+      }
+      if (vals.every(v => v !== 0)) {
+        let isCorrect = true;
+        for (let i = 0; i < vals.length; i++) {
+          const r = br * 3 + Math.floor(i / 3);
+          const c = bc * 3 + (i % 3);
+          if (vals[i] !== window.SOL[r][c]) { isCorrect = false; break; }
+        }
+        cells.forEach(inp => {
+          const cell = inp.parentElement;
+          if (isCorrect) cell.classList.add('correct');
+          else if (showErrors) cell.classList.add('wrong');
+        });
+        if (isCorrect) checkMappingsAndClaim(currentPlayer);
+      }
+    }
+  }
+}
+
+function checkMappingsAndClaim(player) {
+  mapping.forEach(map => {
+    const key = map.target.r + ',' + map.target.c;
+    if (claimed[key]) return; // already claimed
+
+    let complete = true;
+    if (map.type === 'row') {
+      const idx = map.idx;
+      for (let c = 0; c < 9; c++) {
+        if (+sCells[idx * 9 + c].value !== window.SOL[idx][c]) { complete = false; break; }
+      }
+    } else { // column
+      const idx = map.idx;
+      for (let r = 0; r < 9; r++) {
+        if (+sCells[r * 9 + idx].value !== window.SOL[r][idx]) { complete = false; break; }
+      }
+    }
+
+    const cw = cwCells[key];
+    if (complete && cw) {
+      cw.textContent = cw.dataset.letter;
+      cw.classList.add(player === 1 ? 'owner-p1' : 'owner-p2');
+      claimed[key] = player;
+    }
+  });
+}
+
+/* ---------- Scores & winner ---------- */
+function updateScores() {
+  let p1score = 0, p2score = 0;
+  for (const k in claimed) {
+    if (claimed[k] === 1) p1score++;
+    else if (claimed[k] === 2) p2score++;
+  }
+  score1.textContent = p1score;
+  score2.textContent = p2score;
+  checkWinner();
+}
+
+function checkWinner() {
+  const totalCells = Object.keys(claimed).length;
+  const claimedCells = Object.values(claimed).filter(v => v !== null).length;
+  if (gamePlayed && claimedCells === totalCells) {
+    const p1score = parseInt(score1.textContent, 10) || 0;
+    const p2score = parseInt(score2.textContent, 10) || 0;
+    const winner = p1score > p2score ? "🎉 Player 1 Wins!" : p2score > p1score ? "🎉 Player 2 Wins!" : "🤝 It's a Tie!";
+    winnerText.textContent = winner;
+    winnerPopup.style.display = 'flex';
+  }
+}
+
+/* ---------- Turn switching ---------- */
+function switchTurn() {
+  currentPlayer = currentPlayer === 1 ? 2 : 1;
+  p1.classList.toggle('active');
+  p2.classList.toggle('active');
+}
+
+/* ---------- Sudoku solver helpers ---------- */
+function isSafe(board, row, col, num) {
+  for (let x = 0; x < 9; x++) {
+    if (board[row][x] === num || board[x][col] === num) return false;
+  }
+  const startRow = row - (row % 3);
+  const startCol = col - (col % 3);
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      if (board[i + startRow][j + startCol] === num) return false;
+    }
+  }
+  return true;
+}
+
+function solveSudoku(board) {
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      if (board[row][col] === 0) {
+        for (let num = 1; num <= 9; num++) {
+          if (isSafe(board, row, col, num)) {
+            board[row][col] = num;
+            if (solveSudoku(board)) return true;
+            board[row][col] = 0;
+          }
+        }
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/* ---------- Show solution, reset, pack switching ---------- */
+showSolBtn.addEventListener('click', () => {
+  // mark this as not a played game action so winner popup won't trigger from auto-fill
+  gamePlayed = false;
+  sCells.forEach(inp => {
+    const r = +inp.dataset.r, c = +inp.dataset.c;
+    inp.value = window.SOL[r][c];
+  });
+  // claim any mappings for the current player - but we won't switch turns automatically here
+  checkMappingsAndClaim(currentPlayer);
+  updateScores();
+});
+
+resetBtn.addEventListener('click', () => {
+  loadPuzzle(packSelect.value);
+});
+
+// pack change
+packSelect.addEventListener('change', (e) => loadPuzzle(e.target.value));
+
+// play again button on winner popup
+playAgainBtn.addEventListener('click', () => {
+  winnerPopup.style.display = 'none';
+  loadPuzzle(packSelect.value);
+});
+
+/* ---------- Initial load ---------- */
+window.addEventListener('load', () => {
+  loadPuzzle('fruit');
+});
+</script>
+</body>
+</html>
